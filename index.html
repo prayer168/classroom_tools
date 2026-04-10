@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>教室互動儀表板</title>
+  <style>
+    :root{
+      --bg1:#eef6ff; --bg2:#fdf7ff; --panel:rgba(255,255,255,.78); --panel2:rgba(255,255,255,.92);
+      --text:#1f2a44; --muted:#66738f; --primary:#6a8dff; --accent:#ffb4d3;
+      --shadow:0 12px 28px rgba(45,70,120,.18); --radius:24px;
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;width:100%;height:100%;overflow:hidden;
+      font-family:"Segoe UI","Noto Sans TC","Microsoft JhengHei",sans-serif;color:var(--text);
+      background:
+      radial-gradient(circle at 15% 20%, rgba(255,255,255,.8), transparent 25%),
+      radial-gradient(circle at 85% 10%, rgba(255,255,255,.65), transparent 20%),
+      linear-gradient(135deg,var(--bg1),var(--bg2));
+    }
+    body.custom-bg{background-size:cover;background-position:center;background-repeat:no-repeat}
+    .floating-blobs:before,.floating-blobs:after{content:"";position:fixed;border-radius:50%;filter:blur(8px);z-index:0;opacity:.35;pointer-events:none}
+    .floating-blobs:before{width:240px;height:240px;left:-60px;bottom:-40px;background:#b8f2e6}
+    .floating-blobs:after{width:200px;height:200px;right:-40px;top:80px;background:#ffd6e7}
+
+    .topbar{position:fixed;inset:14px 14px auto 14px;height:74px;display:flex;align-items:center;gap:14px;padding:12px 16px;
+      background:rgba(255,255,255,.7);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.6);
+      border-radius:24px;box-shadow:var(--shadow);z-index:20;transition:transform .28s ease, opacity .28s ease}
+    .brand{display:flex;align-items:center;gap:12px;min-width:240px}
+    .brand-badge{width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,#87cefa,#b388ff,#ffb3c6);box-shadow:0 8px 18px rgba(106,141,255,.35)}
+    .brand h1{margin:0;font-size:1.15rem;line-height:1.1}.brand p{margin:2px 0 0;font-size:.82rem;color:var(--muted)}
+    .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;width:100%;justify-content:space-between}
+    .toolbar-left,.toolbar-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .btn,.pill,select,input[type="number"],input[type="color"]{
+      border:0;outline:none;border-radius:16px;padding:10px 14px;font-size:.95rem;background:var(--panel2);color:var(--text);
+      box-shadow:0 4px 10px rgba(60,80,120,.08)
+    }
+    .btn{cursor:pointer;transition:transform .16s ease,box-shadow .16s ease, background .16s ease;font-weight:600}
+    .btn:hover{transform:translateY(-1px)} .btn.primary{background:linear-gradient(135deg,var(--primary),#9a8cff);color:#fff}
+    .btn.accent{background:linear-gradient(135deg,#ffb3c6,#ffd166);color:#573500}.btn.ghost{background:rgba(255,255,255,.88)}
+    .btn.warn{background:linear-gradient(135deg,#ff8a80,#ffb74d);color:#fff}
+    .workspace{position:fixed;inset:100px 12px 12px 12px;overflow:hidden;z-index:1}
+    .widget{position:absolute;min-width:250px;min-height:180px;background:var(--panel);border:1px solid rgba(255,255,255,.6);
+      backdrop-filter:blur(12px);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;user-select:none}
+    .widget.hidden{display:none}
+    .widget-header{height:52px;display:flex;align-items:center;justify-content:space-between;padding:10px 14px 10px 16px;cursor:move;
+      background:linear-gradient(180deg, rgba(255,255,255,.65), rgba(255,255,255,.32));border-bottom:1px solid rgba(255,255,255,.48)}
+    .widget-title{display:flex;align-items:center;gap:10px;font-weight:700;font-size:1rem}
+    .dot-group{display:flex;gap:6px}.dot{width:10px;height:10px;border-radius:50%}.dot.red{background:#ff6b6b}.dot.yellow{background:#ffd166}.dot.green{background:#7bd88f}
+    .widget-actions{display:flex;gap:8px;align-items:center}
+    .icon-btn{width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;
+      border-radius:12px;border:0;cursor:pointer;background:rgba(255,255,255,.8);box-shadow:0 2px 8px rgba(0,0,0,.06);font-size:1rem}
+    .widget-body{padding:16px;height:calc(100% - 52px);overflow:auto}
+    .resize-handle{position:absolute;right:8px;bottom:8px;width:20px;height:20px;cursor:nwse-resize;border-radius:8px;
+      background:linear-gradient(135deg, transparent 0 48%, rgba(106,141,255,.6) 48% 58%, transparent 58% 68%, rgba(255,179,198,.8) 68% 78%, transparent 78% 100%)}
+    .time-big{font-size:clamp(2rem,3.2vw,3.5rem);font-weight:800;letter-spacing:.03em;text-align:center;margin-top:8px}
+    .date-text,.helper{text-align:center;color:var(--muted);margin-top:8px;font-size:.96rem}
+    .center-stack{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:10px;height:100%}
+    .segment{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;align-items:center;margin-top:12px}
+    .mono{font-variant-numeric:tabular-nums;font-family:"Consolas","Courier New",monospace}
+    .display-timer{font-size:clamp(2.2rem,4vw,4rem);font-weight:800;letter-spacing:.06em;padding:12px 18px;border-radius:20px;background:rgba(255,255,255,.65);box-shadow:inset 0 0 0 1px rgba(255,255,255,.6)}
+    .wheel-wrap{display:grid;grid-template-columns:minmax(220px,1fr) 220px;gap:18px;align-items:center;justify-items:center;height:100%}
+    #wheelCanvas{width:100%;max-width:360px;aspect-ratio:1/1;justify-self:center;background:rgba(255,255,255,.42);border-radius:50%;box-shadow:inset 0 0 0 1px rgba(255,255,255,.6)}
+    .pointer{width:0;height:0;margin:0 auto -8px;border-left:16px solid transparent;border-right:16px solid transparent;border-top:24px solid #ff6b6b;filter:drop-shadow(0 4px 6px rgba(0,0,0,.2))}
+    .wheel-panel{background:rgba(255,255,255,.58);border-radius:22px;padding:14px}.wheel-result{font-size:2rem;font-weight:800;text-align:center;margin:8px 0 14px}
+    .grid-2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .whiteboard-tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+    #whiteboardCanvas{width:100%;height:calc(100% - 66px);min-height:250px;background:#fff;border-radius:20px;box-shadow:inset 0 0 0 1px rgba(180,190,220,.5);touch-action:none;cursor:crosshair}
+    .small-label{color:var(--muted);font-size:.9rem;font-weight:600}.range-value{min-width:32px;text-align:center;font-weight:700}
+    .toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%) translateY(20px);background:rgba(31,42,68,.88);color:#fff;padding:12px 18px;border-radius:16px;
+      box-shadow:0 10px 24px rgba(0,0,0,.18);opacity:0;pointer-events:none;transition:.3s ease;z-index:60;font-weight:700}
+    .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+    .footer-tip{position:fixed;right:18px;bottom:18px;z-index:5;color:rgba(70,80,110,.9);background:rgba(255,255,255,.62);padding:10px 14px;border-radius:16px;font-size:.88rem;box-shadow:0 8px 16px rgba(0,0,0,.08);backdrop-filter:blur(8px)}
+    body.presentation-mode .topbar{transform:translateY(-120%);opacity:0;pointer-events:none}
+    body.presentation-mode .workspace{inset:0; width:100vw; height:100vh; overflow:hidden}
+    body.presentation-mode .footer-tip{opacity:.12}
+    body.presentation-mode .widget{box-shadow:0 18px 40px rgba(20,30,60,.22)}
+    body.presentation-mode .widget-header{background:linear-gradient(180deg, rgba(255,255,255,.58), rgba(255,255,255,.24))}
+    body.presentation-mode.show-ui .topbar{transform:translateY(0);opacity:1;pointer-events:auto}
+    body.presentation-mode.show-ui .footer-tip{opacity:1}
+    .presentation-hint{position:fixed;left:16px;bottom:16px;z-index:25;background:rgba(20,30,50,.75);color:#fff;padding:10px 14px;border-radius:14px;font-size:.85rem;opacity:0;pointer-events:none;transform:translateY(8px);transition:.25s ease}
+    .presentation-hint.show{opacity:1;transform:translateY(0)}
+
+    .widget.widget-fullscreen{
+      position:fixed !important;
+      left:12px !important;
+      top:12px !important;
+      width:calc(100vw - 24px) !important;
+      height:calc(100vh - 24px) !important;
+      z-index:100 !important;
+      border-radius:28px;
+      box-shadow:0 22px 50px rgba(20,30,60,.28);
+    }
+    .widget.widget-fullscreen .resize-handle{display:none}
+    .widget.widget-fullscreen .widget-header{cursor:default}
+    .widget.widget-fullscreen .widget-body{height:calc(100% - 52px)}
+    .widget.widget-fullscreen #whiteboardCanvas{height:calc(100% - 66px)}
+    .widget.widget-fullscreen #wheelCanvas{max-width:min(60vh, 58vw)}
+    .widget.widget-fullscreen .wheel-wrap{grid-template-columns:minmax(320px,1fr) 280px}
+    body.widget-focus .topbar,
+    body.widget-focus .footer-tip{opacity:0;pointer-events:none}
+    .fullscreen-widget-btn.active{background:linear-gradient(135deg,#6a8dff,#9a8cff);color:#fff}
+
+    @media (max-width:980px){
+      .topbar{height:auto;align-items:flex-start}
+      .toolbar{flex-direction:column;align-items:stretch}
+      .toolbar-left,.toolbar-right{width:100%}
+      .wheel-wrap{grid-template-columns:1fr}
+      .widget.widget-fullscreen .wheel-wrap{grid-template-columns:1fr}
+    }
+  
+.widget.widget-fullscreen .time-big { font-size: clamp(6rem, 12vw, 16rem); }
+.widget.widget-fullscreen .display-timer { font-size: clamp(6rem, 14vw, 18rem); padding: 20px 30px; }
+.widget.widget-fullscreen .wheel-result { font-size: clamp(3rem, 7vw, 7rem); line-height: 1; margin: 4px 0 8px; }
+.widget.widget-fullscreen canvas { transform: scale(1.1); transform-origin: center; }
+.widget.widget-fullscreen #whiteboardCanvas { height: calc(100% - 20px); }
+.widget.widget-fullscreen .date-text,
+.widget.widget-fullscreen .helper,
+.widget.widget-fullscreen .small-label,
+.widget.widget-fullscreen label,
+.widget.widget-fullscreen .btn,
+.widget.widget-fullscreen input,
+.widget.widget-fullscreen .pill { font-size: clamp(1rem, 1.4vw, 1.35rem); }
+.widget.widget-fullscreen .widget-title { font-size: clamp(1.4rem, 2.5vw, 2.6rem); }
+.widget.widget-fullscreen .icon-btn { width: 52px; height: 52px; font-size: 1.4rem; }
+.widget.widget-fullscreen .wheel-wrap {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  align-items: center;
+  align-content: center;
+  gap: 14px;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+.widget.widget-fullscreen #wheelCanvas {
+  display: block;
+  margin: 0 auto;
+  width: min(42vh, 42vw, 520px);
+  height: min(42vh, 42vw, 520px);
+  max-width: 100%;
+  max-height: 100%;
+}
+.widget.widget-fullscreen .wheel-panel {
+  width: min(560px, 88vw);
+  max-width: 88vw;
+  margin: 0 auto;
+  padding: 12px;
+}
+.widget.widget-fullscreen .pointer {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+
+.widget.widget-fullscreen #wheelWidget,
+.widget.widget-fullscreen .widget-body { overflow: hidden; }
+.widget.widget-fullscreen .wheel-panel .segment { margin-top: 8px; gap: 6px; }
+.widget.widget-fullscreen .wheel-panel .helper { margin-top: 8px; font-size: clamp(0.95rem, 1.2vw, 1.15rem); }
+.widget.widget-fullscreen .grid-2 { gap: 8px; }
+.widget.widget-fullscreen .pointer {
+  margin: 0 auto -4px;
+  transform: scale(0.9);
+}
+.widget.widget-fullscreen .wheel-panel input {
+  width: 100%;
+  padding: 8px 10px;
+}
+.widget.widget-fullscreen .wheel-panel .btn {
+  padding: 10px 12px;
+}
+
+</style>
+</head>
+<body>
+<div class="floating-blobs"></div>
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-badge"></div>
+    <div><h1>教室互動儀表板</h1><p>碼錶・時鐘・輪盤抽籤・倒數計時・白板</p></div>
+  </div>
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <button class="btn primary" data-toggle="clockWidget">顯示時間</button>
+      <button class="btn primary" data-toggle="stopwatchWidget">碼錶</button>
+      <button class="btn primary" data-toggle="countdownWidget">倒數</button>
+      <button class="btn primary" data-toggle="wheelWidget">抽籤輪盤</button>
+      <button class="btn primary" data-toggle="whiteboardWidget">白板</button>
+    </div>
+    <div class="toolbar-right">
+      <label class="pill">背景色 <input id="bgColor" type="color" value="#eef6ff" style="width:34px;height:24px;padding:0;border:0;background:transparent;vertical-align:middle;margin-left:6px;"></label>
+      <button class="btn ghost" id="bgGradientBtn">柔和彩色背景</button>
+      <button class="btn ghost" id="bgClassroomBtn">黑板背景</button>
+      <button class="btn ghost" id="fullscreenBtn">全螢幕模式</button>
+      <button class="btn accent" id="resetLayoutBtn">重設版面</button>
+    </div>
+  </div>
+</div>
+
+<main class="workspace" id="workspace">
+  <section class="widget" id="clockWidget" style="left:20px;top:20px;width:330px;height:230px;z-index:2;">
+    <div class="widget-header">
+      <div class="widget-title"><span class="dot-group"><span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span></span> 現在時間</div>
+      <div class="widget-actions"><button class="icon-btn fullscreen-widget-btn" title="此功能全螢幕">⛶</button><button class="icon-btn close-btn">✕</button></div>
+    </div>
+    <div class="widget-body center-stack"><div class="time-big mono" id="currentTime">00:00:00</div><div class="date-text" id="currentDate">載入中...</div><div class="helper">適合投影在教室前方</div></div><div class="resize-handle"></div>
+  </section>
+
+  <section class="widget" id="stopwatchWidget" style="left:380px;top:20px;width:380px;height:260px;z-index:3;">
+    <div class="widget-header">
+      <div class="widget-title"><span class="dot-group"><span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span></span> 碼錶</div>
+      <div class="widget-actions"><button class="icon-btn fullscreen-widget-btn" title="此功能全螢幕">⛶</button><button class="icon-btn close-btn">✕</button></div>
+    </div>
+    <div class="widget-body center-stack">
+      <div class="display-timer mono" id="stopwatchDisplay">00:00.00</div>
+      <div class="segment"><button class="btn primary" id="startStopwatch">開始</button><button class="btn ghost" id="pauseStopwatch">暫停</button><button class="btn accent" id="resetStopwatch">重設</button></div>
+      <div class="helper">可用於活動計時、闖關、口頭發表</div>
+    </div><div class="resize-handle"></div>
+  </section>
+
+  <section class="widget" id="countdownWidget" style="left:20px;top:280px;width:400px;height:290px;z-index:4;">
+    <div class="widget-header">
+      <div class="widget-title"><span class="dot-group"><span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span></span> 倒數計時</div>
+      <div class="widget-actions"><button class="icon-btn fullscreen-widget-btn" title="此功能全螢幕">⛶</button><button class="icon-btn close-btn">✕</button></div>
+    </div>
+    <div class="widget-body">
+      <div class="center-stack" style="height:auto;">
+        <div class="display-timer mono" id="countdownDisplay">05:00</div>
+        <div class="segment">
+          <label class="small-label">分 <input type="number" id="countdownMinutes" min="0" max="180" value="5" style="width:72px;"></label>
+          <label class="small-label">秒 <input type="number" id="countdownSeconds" min="0" max="59" value="0" style="width:72px;"></label>
+        </div>
+        <div class="segment"><button class="btn primary" id="startCountdown">開始</button><button class="btn ghost" id="pauseCountdown">暫停</button><button class="btn accent" id="resetCountdown">重設</button><button class="btn warn" id="testBell">測試鈴聲</button></div>
+        <div class="helper">時間到會播放鬧鐘聲並跳出提醒</div>
+      </div>
+    </div><div class="resize-handle"></div>
+  </section>
+
+  <section class="widget" id="wheelWidget" style="left:440px;top:300px;width:520px;height:420px;z-index:5;">
+    <div class="widget-header">
+      <div class="widget-title"><span class="dot-group"><span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span></span> 隨機抽籤輪盤（數字）</div>
+      <div class="widget-actions"><button class="icon-btn fullscreen-widget-btn" title="此功能全螢幕">⛶</button><button class="icon-btn close-btn">✕</button></div>
+    </div>
+    <div class="widget-body">
+      <div class="wheel-wrap">
+        <div><div class="pointer"></div><canvas id="wheelCanvas" width="500" height="500"></canvas></div>
+        <div class="wheel-panel">
+          <div class="small-label">抽中的數字</div><div class="wheel-result mono" id="wheelResult">?</div>
+          <div class="grid-2"><label class="small-label">起始<input type="number" id="wheelMin" value="1"></label><label class="small-label">結束<input type="number" id="wheelMax" value="10"></label></div>
+          <div class="segment" style="justify-content:stretch;margin-top:12px;"><button class="btn primary" id="spinWheel" style="width:100%;">開始旋轉</button><button class="btn accent" id="updateWheel" style="width:100%;">更新數字</button></div>
+          <div class="helper" style="margin-top:12px;text-align:left;">適合抽號碼、分組、點答題順序。</div>
+        </div>
+      </div>
+    </div><div class="resize-handle"></div>
+  </section>
+
+  <section class="widget" id="whiteboardWidget" style="left:980px;top:20px;width:420px;height:700px;z-index:6;">
+    <div class="widget-header">
+      <div class="widget-title"><span class="dot-group"><span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span></span> 白板</div>
+      <div class="widget-actions"><button class="icon-btn fullscreen-widget-btn" title="此功能全螢幕">⛶</button><button class="icon-btn close-btn">✕</button></div>
+    </div>
+    <div class="widget-body" style="padding-bottom:12px;">
+      <div class="whiteboard-tools">
+        <label class="pill">顏色 <input type="color" id="penColor" value="#1f2a44" style="width:34px;height:24px;padding:0;border:0;background:transparent;vertical-align:middle;margin-left:6px;"></label>
+        <label class="pill">粗細 <input type="range" id="penSize" min="1" max="20" value="4" style="vertical-align:middle;"> <span class="range-value" id="penSizeValue">4</span></label>
+        <button class="btn ghost" id="eraserBtn">橡皮擦</button>
+        <button class="btn accent" id="clearBoard">清空</button>
+      </div>
+      <canvas id="whiteboardCanvas"></canvas>
+    </div><div class="resize-handle"></div>
+  </section>
+</main>
+
+<div class="footer-tip">拖曳視窗可移動位置，右下角可調整大小。</div>
+<div class="presentation-hint" id="presentationHint">已進入全螢幕教室模式｜按 Esc 可離開全螢幕，滑鼠移到上方可叫出工具列</div>
+<div class="toast" id="toast">時間到囉！</div>
+
+<script>
+const workspace=document.getElementById('workspace'),toast=document.getElementById('toast');
+function showToast(message){toast.textContent=message;toast.classList.add('show');clearTimeout(showToast._timer);showToast._timer=setTimeout(()=>toast.classList.remove('show'),2200);}
+
+document.querySelectorAll('[data-toggle]').forEach(btn=>btn.addEventListener('click',()=>document.getElementById(btn.dataset.toggle).classList.toggle('hidden')));
+document.querySelectorAll('.close-btn').forEach(btn=>btn.addEventListener('click',e=>{
+  const widget=e.target.closest('.widget');
+  exitWidgetFullscreen(widget);
+  widget.classList.add('hidden');
+}));
+
+let zIndexCounter=10;
+document.querySelectorAll('.widget').forEach(makeInteractive);
+
+function makeInteractive(widget){
+  const header=widget.querySelector('.widget-header'),handle=widget.querySelector('.resize-handle');
+  widget.addEventListener('mousedown',()=>widget.style.zIndex=++zIndexCounter);
+  header.addEventListener('mousedown',(e)=>{
+    if(e.target.closest('button')) return;
+    if(widget.classList.contains('widget-fullscreen')) return;
+    const rect=widget.getBoundingClientRect(), wrap=workspace.getBoundingClientRect();
+    const startX=e.clientX,startY=e.clientY,startLeft=rect.left-wrap.left,startTop=rect.top-wrap.top;
+    function onMove(ev){
+      widget.style.left=Math.max(0,Math.min(workspace.clientWidth-180,startLeft+ev.clientX-startX))+'px';
+      widget.style.top=Math.max(0,Math.min(workspace.clientHeight-80,startTop+ev.clientY-startY))+'px';
+    }
+    function onUp(){window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp);}
+    window.addEventListener('mousemove',onMove);window.addEventListener('mouseup',onUp);
+  });
+  handle.addEventListener('mousedown',(e)=>{
+    e.stopPropagation();
+    if(widget.classList.contains('widget-fullscreen')) return;
+    const rect=widget.getBoundingClientRect(), startX=e.clientX,startY=e.clientY,startW=rect.width,startH=rect.height;
+    function onMove(ev){
+      widget.style.width=Math.max(250,Math.min(workspace.clientWidth,startW+ev.clientX-startX))+'px';
+      widget.style.height=Math.max(180,Math.min(workspace.clientHeight,startH+ev.clientY-startY))+'px';
+      if(widget.id==='whiteboardWidget') resizeWhiteboardCanvas();
+    }
+    function onUp(){window.removeEventListener('mousemove',onMove);window.removeEventListener('mouseup',onUp);}
+    window.addEventListener('mousemove',onMove);window.addEventListener('mouseup',onUp);
+  });
+}
+
+// each widget fullscreen
+let activeFullscreenWidget=null;
+function enterWidgetFullscreen(widget){
+  if(activeFullscreenWidget && activeFullscreenWidget!==widget) exitWidgetFullscreen(activeFullscreenWidget);
+  if(widget.classList.contains('widget-fullscreen')) return;
+  widget.dataset.prevStyle = JSON.stringify({
+    left: widget.style.left, top: widget.style.top, width: widget.style.width, height: widget.style.height, zIndex: widget.style.zIndex
+  });
+  widget.classList.add('widget-fullscreen');
+  document.body.classList.add('widget-focus');
+  widget.style.zIndex = 100;
+  activeFullscreenWidget = widget;
+  const btn = widget.querySelector('.fullscreen-widget-btn');
+  if(btn){ btn.textContent='🡼'; btn.classList.add('active'); btn.title='離開此功能全螢幕'; }
+  if(widget.id==='whiteboardWidget') setTimeout(resizeWhiteboardCanvas, 30);
+  if(widget.id==='wheelWidget') setTimeout(drawWheel, 30);
+  showToast('已放大此功能');
+}
+function exitWidgetFullscreen(widget){
+  if(!widget || !widget.classList.contains('widget-fullscreen')) return;
+  widget.classList.remove('widget-fullscreen');
+  const prev = widget.dataset.prevStyle ? JSON.parse(widget.dataset.prevStyle) : null;
+  if(prev){
+    widget.style.left = prev.left || '';
+    widget.style.top = prev.top || '';
+    widget.style.width = prev.width || '';
+    widget.style.height = prev.height || '';
+    widget.style.zIndex = prev.zIndex || '';
+  }
+  const btn = widget.querySelector('.fullscreen-widget-btn');
+  if(btn){ btn.textContent='⛶'; btn.classList.remove('active'); btn.title='此功能全螢幕'; }
+  if(widget.id==='whiteboardWidget') setTimeout(resizeWhiteboardCanvas, 30);
+  if(widget.id==='wheelWidget') setTimeout(drawWheel, 30);
+  if(activeFullscreenWidget===widget) activeFullscreenWidget=null;
+  if(!document.querySelector('.widget.widget-fullscreen')) document.body.classList.remove('widget-focus');
+}
+document.querySelectorAll('.fullscreen-widget-btn').forEach(btn=>{
+  btn.addEventListener('click', e=>{
+    const widget = e.target.closest('.widget');
+    if(widget.classList.contains('widget-fullscreen')) exitWidgetFullscreen(widget);
+    else enterWidgetFullscreen(widget);
+  });
+});
+
+// clock
+const currentTime=document.getElementById('currentTime'),currentDate=document.getElementById('currentDate');
+function updateClock(){const now=new Date();currentTime.textContent=now.toLocaleTimeString('zh-TW',{hour12:false});currentDate.textContent=now.toLocaleDateString('zh-TW',{weekday:'long',year:'numeric',month:'long',day:'numeric'});}
+updateClock(); setInterval(updateClock,1000);
+
+// stopwatch
+const stopwatchDisplay=document.getElementById('stopwatchDisplay'); let swElapsed=0, swRunning=false, swLast=0;
+function formatStopwatch(ms){const cs=Math.floor(ms/10)%100,s=Math.floor(ms/1000)%60,m=Math.floor(ms/60000);return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(cs).padStart(2,'0')}`;}
+function tickStopwatch(ts){if(!swRunning) return; swElapsed+=ts-swLast; swLast=ts; stopwatchDisplay.textContent=formatStopwatch(swElapsed); requestAnimationFrame(tickStopwatch);}
+document.getElementById('startStopwatch').onclick=()=>{if(swRunning)return; swRunning=true; swLast=performance.now(); requestAnimationFrame(tickStopwatch);};
+document.getElementById('pauseStopwatch').onclick=()=>swRunning=false;
+document.getElementById('resetStopwatch').onclick=()=>{swRunning=false; swElapsed=0; stopwatchDisplay.textContent='00:00.00';};
+
+function ringBell(){
+  const AudioContext=window.AudioContext||window.webkitAudioContext; if(!AudioContext) return;
+  const ctx=new AudioContext(), now=ctx.currentTime;
+  [0,.22,.44].forEach(offset=>{
+    const osc=ctx.createOscillator(), gain=ctx.createGain();
+    osc.type='sine'; osc.frequency.setValueAtTime(880,now+offset); osc.frequency.exponentialRampToValueAtTime(1320,now+offset+.12);
+    gain.gain.setValueAtTime(.0001,now+offset); gain.gain.exponentialRampToValueAtTime(.25,now+offset+.02); gain.gain.exponentialRampToValueAtTime(.0001,now+offset+.3);
+    osc.connect(gain).connect(ctx.destination); osc.start(now+offset); osc.stop(now+offset+.32);
+  });
+}
+document.getElementById('testBell').onclick=ringBell;
+
+// countdown
+const countdownDisplay=document.getElementById('countdownDisplay'), inputMin=document.getElementById('countdownMinutes'), inputSec=document.getElementById('countdownSeconds');
+let cdTotal=300, cdRemaining=300, cdRunning=false, cdTimer=null;
+function formatCountdown(totalSec){const m=Math.floor(totalSec/60),s=totalSec%60; return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;}
+function syncCountdownFromInputs(){cdTotal=Math.max(0,Number(inputMin.value||0)*60+Number(inputSec.value||0)); cdRemaining=cdTotal; countdownDisplay.textContent=formatCountdown(cdRemaining);}
+syncCountdownFromInputs(); inputMin.onchange=syncCountdownFromInputs; inputSec.onchange=syncCountdownFromInputs;
+document.getElementById('startCountdown').onclick=()=>{
+  if(cdRunning) return; if(cdRemaining<=0) syncCountdownFromInputs(); cdRunning=true;
+  cdTimer=setInterval(()=>{cdRemaining--; countdownDisplay.textContent=formatCountdown(Math.max(cdRemaining,0));
+    if(cdRemaining<=0){clearInterval(cdTimer); cdRunning=false; ringBell(); showToast('倒數結束！');}},1000);
+};
+document.getElementById('pauseCountdown').onclick=()=>{cdRunning=false; clearInterval(cdTimer);};
+document.getElementById('resetCountdown').onclick=()=>{clearInterval(cdTimer); cdRunning=false; syncCountdownFromInputs();};
+
+// wheel
+const wheelCanvas=document.getElementById('wheelCanvas'), wheelCtx=wheelCanvas.getContext('2d'), wheelResult=document.getElementById('wheelResult'), wheelMin=document.getElementById('wheelMin'), wheelMax=document.getElementById('wheelMax');
+let wheelNumbers=[], wheelRotation=0, spinning=false;
+function buildWheelNumbers(){let min=parseInt(wheelMin.value,10), max=parseInt(wheelMax.value,10); if(Number.isNaN(min)) min=1; if(Number.isNaN(max)) max=10; if(min>max)[min,max]=[max,min]; const count=Math.min(50,Math.max(1,max-min+1)); wheelNumbers=Array.from({length:count},(_,i)=>min+i); drawWheel(); wheelResult.textContent='?';}
+function sliceColor(i){const p=['#8ecae6','#ffcad4','#caffbf','#ffd6a5','#bdb2ff','#a0c4ff','#fdffb6','#9bf6ff']; return p[i%p.length];}
+function drawWheel(){
+  const w=wheelCanvas.width,h=wheelCanvas.height,cx=w/2,cy=h/2,r=Math.min(w,h)/2-20; wheelCtx.clearRect(0,0,w,h); if(!wheelNumbers.length) return;
+  const anglePer=Math.PI*2/wheelNumbers.length; wheelCtx.save(); wheelCtx.translate(cx,cy); wheelCtx.rotate(wheelRotation);
+  wheelNumbers.forEach((num,i)=>{const start=i*anglePer,end=start+anglePer; wheelCtx.beginPath(); wheelCtx.moveTo(0,0); wheelCtx.arc(0,0,r,start,end); wheelCtx.closePath(); wheelCtx.fillStyle=sliceColor(i); wheelCtx.fill();
+    wheelCtx.save(); wheelCtx.rotate(start+anglePer/2); wheelCtx.textAlign='right'; wheelCtx.fillStyle='#1f2a44'; wheelCtx.font=`bold ${Math.max(16,28-wheelNumbers.length*.2)}px Segoe UI`; wheelCtx.fillText(String(num),r-18,8); wheelCtx.restore();
+  });
+  wheelCtx.beginPath(); wheelCtx.arc(0,0,34,0,Math.PI*2); wheelCtx.fillStyle='rgba(255,255,255,.9)'; wheelCtx.fill(); wheelCtx.restore();
+}
+function getSelectedNumber(){if(!wheelNumbers.length) return null; const normalized=((Math.PI*1.5-wheelRotation)%(Math.PI*2)+Math.PI*2)%(Math.PI*2); const anglePer=Math.PI*2/wheelNumbers.length; const index=Math.floor(normalized/anglePer)%wheelNumbers.length; return wheelNumbers[index];}
+function animateWheel(targetRotation,duration=3600){const start=performance.now(), initial=wheelRotation; function frame(now){const t=Math.min(1,(now-start)/duration), ease=1-Math.pow(1-t,4); wheelRotation=initial+(targetRotation-initial)*ease; drawWheel(); if(t<1) requestAnimationFrame(frame); else {spinning=false; const result=getSelectedNumber(); wheelResult.textContent=result; showToast(`抽中了 ${result}`); ringBell();}} requestAnimationFrame(frame);}
+document.getElementById('updateWheel').onclick=buildWheelNumbers;
+document.getElementById('spinWheel').onclick=()=>{if(spinning)return; spinning=true; animateWheel(wheelRotation+Math.PI*2*(5+Math.random()*4)+Math.random()*Math.PI*2);};
+buildWheelNumbers();
+
+// whiteboard
+const whiteboard=document.getElementById('whiteboardCanvas'), wbCtx=whiteboard.getContext('2d'), penColor=document.getElementById('penColor'), penSize=document.getElementById('penSize'), penSizeValue=document.getElementById('penSizeValue'), eraserBtn=document.getElementById('eraserBtn');
+let drawing=false, erasing=false;
+function resizeWhiteboardCanvas(){
+  const rect=whiteboard.getBoundingClientRect();
+  const old=document.createElement('canvas'); old.width=whiteboard.width||1; old.height=whiteboard.height||1; const oldCtx=old.getContext('2d'); try{oldCtx.drawImage(whiteboard,0,0);}catch(e){}
+  whiteboard.width=Math.max(300,Math.floor(rect.width*devicePixelRatio)); whiteboard.height=Math.max(220,Math.floor(rect.height*devicePixelRatio));
+  wbCtx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0); wbCtx.fillStyle='#ffffff'; wbCtx.fillRect(0,0,rect.width,rect.height);
+  try{wbCtx.drawImage(old,0,0,rect.width,rect.height);}catch(e){}
+  wbCtx.lineCap='round'; wbCtx.lineJoin='round';
+}
+function pointFromEvent(e){const rect=whiteboard.getBoundingClientRect(); return {x:e.clientX-rect.left,y:e.clientY-rect.top};}
+function startDraw(e){drawing=true; const p=pointFromEvent(e); wbCtx.beginPath(); wbCtx.moveTo(p.x,p.y);}
+function moveDraw(e){if(!drawing) return; const p=pointFromEvent(e); wbCtx.strokeStyle=erasing?'#ffffff':penColor.value; wbCtx.lineWidth=Number(penSize.value); wbCtx.lineTo(p.x,p.y); wbCtx.stroke();}
+function stopDraw(){drawing=false; wbCtx.closePath();}
+penSize.oninput=()=>penSizeValue.textContent=penSize.value;
+eraserBtn.onclick=()=>{erasing=!erasing; eraserBtn.textContent=erasing?'畫筆模式':'橡皮擦'; eraserBtn.classList.toggle('warn',erasing);};
+document.getElementById('clearBoard').onclick=()=>{const rect=whiteboard.getBoundingClientRect(); wbCtx.fillStyle='#ffffff'; wbCtx.fillRect(0,0,rect.width,rect.height);};
+whiteboard.addEventListener('pointerdown',startDraw); whiteboard.addEventListener('pointermove',moveDraw); whiteboard.addEventListener('pointerup',stopDraw); whiteboard.addEventListener('pointerleave',stopDraw);
+window.addEventListener('resize',()=>{resizeWhiteboardCanvas(); if(activeFullscreenWidget?.id==='wheelWidget') drawWheel();}); setTimeout(resizeWhiteboardCanvas,80);
+
+// background
+function lighten(hex,percent){const num=parseInt(hex.replace('#',''),16); let r=(num>>16)+percent,g=((num>>8)&255)+percent,b=(num&255)+percent; r=Math.max(0,Math.min(255,r)); g=Math.max(0,Math.min(255,g)); b=Math.max(0,Math.min(255,b)); return '#'+((r<<16)|(g<<8)|b).toString(16).padStart(6,'0');}
+document.getElementById('bgColor').addEventListener('input',e=>{document.body.classList.remove('custom-bg'); document.documentElement.style.setProperty('--bg1',e.target.value); document.documentElement.style.setProperty('--bg2',lighten(e.target.value,30));});
+document.getElementById('bgGradientBtn').onclick=()=>{document.body.classList.remove('custom-bg'); document.documentElement.style.setProperty('--bg1','#eef6ff'); document.documentElement.style.setProperty('--bg2','#fdf7ff'); showToast('已切換成柔和彩色背景');};
+document.getElementById('bgClassroomBtn').onclick=()=>{
+  document.body.classList.add('custom-bg');
+  document.body.style.backgroundImage=`linear-gradient(rgba(20,40,30,.42), rgba(20,40,30,.42)), url("data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='1600' height='900' viewBox='0 0 1600 900'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0%' stop-color='%23225b4b'/><stop offset='100%' stop-color='%23173f35'/></linearGradient></defs><rect width='1600' height='900' fill='url(%23g)'/><g opacity='0.12' stroke='white'><path d='M0 100 H1600'/><path d='M0 200 H1600'/><path d='M0 300 H1600'/><path d='M0 400 H1600'/><path d='M0 500 H1600'/><path d='M0 600 H1600'/><path d='M0 700 H1600'/><path d='M0 800 H1600'/></g></svg>`) }")`; showToast('已切換成黑板風背景');
+};
+
+// page fullscreen
+const fullscreenBtn=document.getElementById('fullscreenBtn'), presentationHint=document.getElementById('presentationHint');
+function showPresentationHint(message){presentationHint.textContent=message; presentationHint.classList.add('show'); clearTimeout(showPresentationHint._timer); showPresentationHint._timer=setTimeout(()=>presentationHint.classList.remove('show'),2600);}
+async function enterFullscreenMode(){try{if(!document.fullscreenElement) await document.documentElement.requestFullscreen({navigationUI:'hide'});} catch(e){} document.body.classList.add('presentation-mode'); fullscreenBtn.textContent='離開全螢幕'; showPresentationHint('已進入全螢幕教室模式｜按 Esc 可離開全螢幕，滑鼠移到上方可叫出工具列');}
+async function exitFullscreenMode(){document.body.classList.remove('presentation-mode','show-ui'); if(document.fullscreenElement){try{await document.exitFullscreen();}catch(e){}} fullscreenBtn.textContent='全螢幕模式'; showToast('已離開全螢幕模式');}
+fullscreenBtn.onclick=async()=>{if(document.body.classList.contains('presentation-mode')) await exitFullscreenMode(); else await enterFullscreenMode();};
+document.addEventListener('fullscreenchange',()=>{if(!document.fullscreenElement&&document.body.classList.contains('presentation-mode')){document.body.classList.remove('presentation-mode','show-ui'); fullscreenBtn.textContent='全螢幕模式'; showToast('已退出瀏覽器全螢幕');}});
+document.addEventListener('mousemove',(e)=>{if(!document.body.classList.contains('presentation-mode')) return; if(e.clientY<90) document.body.classList.add('show-ui'); else document.body.classList.remove('show-ui');});
+document.addEventListener('keydown',async(e)=>{
+  if(e.key==='Escape'){
+    if(activeFullscreenWidget){ exitWidgetFullscreen(activeFullscreenWidget); return; }
+    if(document.body.classList.contains('presentation-mode')&&!document.fullscreenElement) await exitFullscreenMode();
+  }
+  if(e.key.toLowerCase()==='f'){
+    if(document.body.classList.contains('presentation-mode')) await exitFullscreenMode(); else await enterFullscreenMode();
+  }
+});
+
+// reset
+document.getElementById('resetLayoutBtn').onclick=()=>{
+  if(activeFullscreenWidget) exitWidgetFullscreen(activeFullscreenWidget);
+  const reset={clockWidget:{left:20,top:20,width:330,height:230},stopwatchWidget:{left:380,top:20,width:380,height:260},countdownWidget:{left:20,top:280,width:400,height:290},wheelWidget:{left:440,top:300,width:520,height:420},whiteboardWidget:{left:980,top:20,width:420,height:700}};
+  Object.entries(reset).forEach(([id,box])=>{const el=document.getElementById(id); el.classList.remove('hidden'); el.style.left=box.left+'px'; el.style.top=box.top+'px'; el.style.width=box.width+'px'; el.style.height=box.height+'px';});
+  resizeWhiteboardCanvas(); drawWheel(); showToast('版面已重設');
+};
+</script>
+</body>
+</html>
