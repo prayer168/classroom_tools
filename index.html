@@ -330,6 +330,30 @@ function showToast(msg){toast.textContent=msg;toast.classList.add('show');clearT
 document.querySelectorAll('[data-toggle]').forEach(btn=>btn.addEventListener('click',()=>document.getElementById(btn.dataset.toggle).classList.toggle('hidden')));
 document.querySelectorAll('.close-btn').forEach(btn=>btn.addEventListener('click',e=>{const w=e.target.closest('.widget');exitWidgetFullscreen(w);w.classList.add('hidden');}));
 
+/* === 音效系統 === */
+let _ac=null;
+function getAC(){if(!_ac)_ac=new(window.AudioContext||window.webkitAudioContext)();if(_ac.state==='suspended')_ac.resume();return _ac;}
+
+// 滴答聲（碼錶每秒）
+function playTick(vol=0.07){const ac=getAC(),t=ac.currentTime;const o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=1050;g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(0.0001,t+0.055);o.connect(g).connect(ac.destination);o.start(t);o.stop(t+0.06);}
+
+// 噹聲（抽籤/骰子結果）
+function playDing(){const ac=getAC(),t=ac.currentTime;[[523,.28],[659,.22],[784,.18]].forEach(([f,v],i)=>{const o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(0.0001,t+i*.09);g.gain.exponentialRampToValueAtTime(v,t+i*.09+.025);g.gain.exponentialRampToValueAtTime(0.0001,t+i*.09+1.0);o.connect(g).connect(ac.destination);o.start(t+i*.09);o.stop(t+i*.09+1.1);});}
+
+// 鬧鐘鈴（倒數結束）
+function ringBell(){const ac=getAC(),t=ac.currentTime;[0,.22,.44,.66].forEach(off=>{const o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.setValueAtTime(880,t+off);o.frequency.exponentialRampToValueAtTime(1320,t+off+.12);g.gain.setValueAtTime(0.0001,t+off);g.gain.exponentialRampToValueAtTime(.35,t+off+.025);g.gain.exponentialRampToValueAtTime(0.0001,t+off+.3);o.connect(g).connect(ac.destination);o.start(t+off);o.stop(t+off+.35);});}
+
+// 輪盤旋轉聲（帶通噪音）
+let _wsSrc=null,_wsGain=null;
+function startSpinSound(){stopSpinSound(0);const ac=getAC();const buf=ac.createBuffer(1,ac.sampleRate,ac.sampleRate);const d=buf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;_wsSrc=ac.createBufferSource();_wsSrc.buffer=buf;_wsSrc.loop=true;const bpf=ac.createBiquadFilter();bpf.type='bandpass';bpf.frequency.value=1400;bpf.Q.value=1.8;_wsGain=ac.createGain();_wsGain.gain.setValueAtTime(0.0001,ac.currentTime);_wsGain.gain.exponentialRampToValueAtTime(.09,ac.currentTime+.5);_wsSrc.connect(bpf).connect(_wsGain).connect(ac.destination);_wsSrc.start();}
+function stopSpinSound(fade=0.5){if(!_wsSrc)return;const ac=getAC(),t=ac.currentTime;try{_wsGain.gain.cancelScheduledValues(t);_wsGain.gain.setValueAtTime(_wsGain.gain.value,t);_wsGain.gain.exponentialRampToValueAtTime(0.0001,t+fade);}catch(e){}const s=_wsSrc;setTimeout(()=>{try{s.stop();}catch(e){}},fade*1000+150);_wsSrc=null;_wsGain=null;}
+
+// 骰子搖晃聲
+function playDiceRattle(){const ac=getAC(),t=ac.currentTime;for(let i=0;i<14;i++){const d=i*.067,o=ac.createOscillator(),g=ac.createGain();o.type='sawtooth';o.frequency.setValueAtTime(80+Math.random()*150,t+d);g.gain.setValueAtTime(0.0001,t+d);g.gain.exponentialRampToValueAtTime(.18,t+d+.012);g.gain.exponentialRampToValueAtTime(0.0001,t+d+.06);o.connect(g).connect(ac.destination);o.start(t+d);o.stop(t+d+.075);}}
+
+// 語音播報
+function speak(text){try{window.speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='zh-TW';u.rate=.88;u.pitch=1.05;window.speechSynthesis.speak(u);}catch(e){}}
+
 let zTop=10;
 document.querySelectorAll('.widget').forEach(makeInteractive);
 function makeInteractive(w){
@@ -385,12 +409,12 @@ function updateClock(){const n=new Date();ctEl.textContent=n.toLocaleTimeString(
 updateClock();setInterval(updateClock,1000);
 
 /* === 碼錶 === */
-const swDisp=document.getElementById('stopwatchDisplay');let swEl=0,swRun=false,swLast=0;
+const swDisp=document.getElementById('stopwatchDisplay');let swEl=0,swRun=false,swLast=0,swLastSec=-1;
 function fmtSW(ms){const cs=Math.floor(ms/10)%100,s=Math.floor(ms/1000)%60,m=Math.floor(ms/60000);return`${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(cs).padStart(2,'0')}`;}
-function tickSW(ts){if(!swRun)return;swEl+=ts-swLast;swLast=ts;swDisp.textContent=fmtSW(swEl);requestAnimationFrame(tickSW);}
-document.getElementById('startStopwatch').onclick=()=>{if(swRun)return;swRun=true;swLast=performance.now();requestAnimationFrame(tickSW);};
+function tickSW(ts){if(!swRun)return;swEl+=ts-swLast;swLast=ts;swDisp.textContent=fmtSW(swEl);const sec=Math.floor(swEl/1000);if(sec!==swLastSec){swLastSec=sec;if(sec>0)playTick();}requestAnimationFrame(tickSW);}
+document.getElementById('startStopwatch').onclick=()=>{if(swRun)return;swRun=true;swLast=performance.now();swLastSec=Math.floor(swEl/1000);requestAnimationFrame(tickSW);};
 document.getElementById('pauseStopwatch').onclick=()=>swRun=false;
-document.getElementById('resetStopwatch').onclick=()=>{swRun=false;swEl=0;swDisp.textContent='00:00.00';};
+document.getElementById('resetStopwatch').onclick=()=>{swRun=false;swEl=0;swLastSec=-1;swDisp.textContent='00:00.00';};
 
 /* === 鈴聲 === */
 function ringBell(){
@@ -423,7 +447,7 @@ function drawWheel(){
   wCtx.beginPath();wCtx.arc(0,0,30,0,Math.PI*2);wCtx.fillStyle='rgba(255,255,255,.9)';wCtx.fill();wCtx.restore();
 }
 function getWheelNum(){if(!wNums.length)return null;const norm=((Math.PI*1.5-wRot)%(Math.PI*2)+Math.PI*2)%(Math.PI*2);return wNums[Math.floor(norm/(Math.PI*2/wNums.length))%wNums.length];}
-function animateWheel(target,dur=3600){const t0=performance.now(),init=wRot;(function frame(now){const t=Math.min(1,(now-t0)/dur),ease=1-Math.pow(1-t,4);wRot=init+(target-init)*ease;drawWheel();if(t<1)requestAnimationFrame(frame);else{wSpin=false;const r=getWheelNum();wRes.textContent=r;showToast(`🎯 抽中了 ${r}`);ringBell();};})(performance.now());}
+function animateWheel(target,dur=3600){const t0=performance.now(),init=wRot;startSpinSound();(function frame(now){const t=Math.min(1,(now-t0)/dur),ease=1-Math.pow(1-t,4);wRot=init+(target-init)*ease;drawWheel();if(t<1){requestAnimationFrame(frame);}else{stopSpinSound(0.35);wSpin=false;const r=getWheelNum();wRes.textContent=r;showToast(`🎯 抽中了 ${r}`);setTimeout(()=>{playDing();setTimeout(()=>speak(`抽中 ${r}`),700);},100);};})(performance.now());}
 document.getElementById('updateWheel').onclick=buildWheel;
 document.getElementById('spinWheel').onclick=()=>{if(wSpin)return;wSpin=true;animateWheel(wRot+Math.PI*2*(5+Math.random()*4)+Math.random()*Math.PI*2);};
 buildWheel();
@@ -449,7 +473,7 @@ function drawNameWheel(){
   nwCtx.beginPath();nwCtx.arc(0,0,30,0,Math.PI*2);nwCtx.fillStyle='rgba(255,255,255,.9)';nwCtx.fill();nwCtx.restore();
 }
 function getNameResult(){if(!nwNames.length)return null;const norm=((Math.PI*1.5-nwRot)%(Math.PI*2)+Math.PI*2)%(Math.PI*2);return nwNames[Math.floor(norm/(Math.PI*2/nwNames.length))%nwNames.length];}
-function animateNameWheel(target,dur=3600){const t0=performance.now(),init=nwRot;(function frame(now){const t=Math.min(1,(now-t0)/dur),ease=1-Math.pow(1-t,4);nwRot=init+(target-init)*ease;drawNameWheel();if(t<1)requestAnimationFrame(frame);else{nwSpin=false;const r=getNameResult();nwRes.textContent=r;showToast(`🎯 點到了 ${r}！`);ringBell();};})(performance.now());}
+function animateNameWheel(target,dur=3600){const t0=performance.now(),init=nwRot;startSpinSound();(function frame(now){const t=Math.min(1,(now-t0)/dur),ease=1-Math.pow(1-t,4);nwRot=init+(target-init)*ease;drawNameWheel();if(t<1){requestAnimationFrame(frame);}else{stopSpinSound(0.35);nwSpin=false;const r=getNameResult();nwRes.textContent=r;showToast(`🎯 點到了 ${r}！`);setTimeout(()=>{playDing();setTimeout(()=>speak(r),700);},100);};})(performance.now());}
 document.getElementById('updateNameWheel').onclick=buildNameWheel;
 document.getElementById('spinNameWheel').onclick=()=>{if(nwSpin)return;nwSpin=true;animateNameWheel(nwRot+Math.PI*2*(5+Math.random()*4)+Math.random()*Math.PI*2);};
 nwTa.value='小明\n小華\n小美\n小凱\n小芸';
@@ -462,6 +486,7 @@ document.getElementById('rollDice').onclick=()=>{
   const n=parseInt(document.getElementById('diceCount').value)||3;
   let frame=0;
   diceDisp.parentElement.classList.add('dice-spinning');
+  playDiceRattle();
   const anim=setInterval(()=>{
     diceDisp.innerHTML=Array.from({length:n},()=>`<span class="dice-face">${DICE[Math.floor(Math.random()*6)]}</span>`).join('');
     if(++frame>=15){
@@ -471,7 +496,14 @@ document.getElementById('rollDice').onclick=()=>{
       diceDisp.innerHTML=results.map(r=>`<span class="dice-face">${DICE[r]}</span>`).join('');
       const sum=results.reduce((a,b)=>a+b+1,0);
       diceSum.textContent=n>1?`總和：${sum}`:'';
-      ringBell();showToast(`🎲 擲出了 ${results.map(r=>r+1).join(' + ')}${n>1?' = '+sum:''}`);
+      showToast(`🎲 擲出了 ${results.map(r=>r+1).join(' + ')}${n>1?' = '+sum:''}`);
+      setTimeout(()=>{
+        playDing();
+        setTimeout(()=>{
+          const msg=n>1?`總和 ${sum} 點`:`${sum} 點`;
+          speak(msg);
+        },700);
+      },100);
     }
   },60);
 };
