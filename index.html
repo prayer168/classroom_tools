@@ -56,6 +56,11 @@
     .resize-handle{position:absolute;right:8px;bottom:8px;width:20px;height:20px;cursor:nwse-resize;border-radius:8px;
       background:linear-gradient(135deg, transparent 0 48%, rgba(99,102,241,.6) 48% 58%, transparent 58% 68%, rgba(147,51,234,.8) 68% 78%, transparent 78% 100%)}
     .time-big{font-size:clamp(2rem,3.2vw,3.5rem);font-weight:800;letter-spacing:.03em;text-align:center;margin-top:8px}
+    /* 分段滾動數字時鐘 */
+    .digit-clock{display:flex;align-items:center;justify-content:center;gap:0}
+    .dslot{position:relative;overflow:hidden;width:1ch;height:1.18em;display:inline-block;vertical-align:middle}
+    .da,.db{position:absolute;top:0;left:0;right:0;text-align:center;will-change:transform;font-variant-numeric:tabular-nums;font-family:"Consolas","Courier New",monospace}
+    .dsep{display:inline-block;vertical-align:middle;margin:0 .06em;font-variant-numeric:tabular-nums;font-family:"Consolas","Courier New",monospace}
     .date-text,.helper{text-align:center;color:var(--muted);margin-top:8px;font-size:.96rem}
     .center-stack{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:10px;height:100%}
     .segment{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;align-items:center;margin-top:12px}
@@ -184,7 +189,7 @@
       <div class="widget-title"><span class="dot-group"><span class="dot red"></span><span class="dot yellow"></span><span class="dot green"></span></span> 🕐 現在時間</div>
       <div class="widget-actions"><button class="icon-btn fullscreen-widget-btn" title="此功能全螢幕">⛶</button><button class="icon-btn close-btn">✕</button></div>
     </div>
-    <div class="widget-body center-stack"><div class="time-big mono" id="currentTime">00:00:00</div><div class="date-text" id="currentDate">載入中...</div><div class="helper">適合投影在教室前方</div></div>
+    <div class="widget-body center-stack"><div class="time-big digit-clock" id="currentTime"><span class="dslot" id="dt0"></span><span class="dslot" id="dt1"></span><span class="dsep">:</span><span class="dslot" id="dt2"></span><span class="dslot" id="dt3"></span><span class="dsep">:</span><span class="dslot" id="dt4"></span><span class="dslot" id="dt5"></span></div><div class="date-text" id="currentDate">載入中...</div><div class="helper">適合投影在教室前方</div></div>
     <div class="resize-handle"></div>
   </section>
 
@@ -441,8 +446,38 @@ function exitWidgetFullscreen(w){
 document.querySelectorAll('.fullscreen-widget-btn').forEach(btn=>btn.addEventListener('click',e=>{const w=e.target.closest('.widget');w.classList.contains('widget-fullscreen')?exitWidgetFullscreen(w):enterWidgetFullscreen(w);}));
 
 /* === 時鐘 === */
-const ctEl=document.getElementById('currentTime'),cdEl=document.getElementById('currentDate');
-function updateClock(){const n=new Date();ctEl.textContent=n.toLocaleTimeString('zh-TW',{hour12:false});cdEl.textContent=n.toLocaleDateString('zh-TW',{weekday:'long',year:'numeric',month:'long',day:'numeric'});}
+/* === 時鐘 - 分段滾動數字 === */
+const cdEl=document.getElementById('currentDate');
+const _ds={};
+['dt0','dt1','dt2','dt3','dt4','dt5'].forEach(id=>{
+  const el=document.getElementById(id);
+  const a=document.createElement('span'),b=document.createElement('span');
+  a.className='da';b.className='db';
+  b.style.transform='translateY(110%)';
+  el.appendChild(a);el.appendChild(b);
+  _ds[id]={a,b,top:'a',cur:null};
+});
+function setDigit(id,ch){
+  const s=_ds[id];if(s.cur===ch)return;s.cur=ch;
+  const nxt=s.top==='a'?s.b:s.a,prv=s.top==='a'?s.a:s.b;
+  nxt.textContent=ch;nxt.style.transition='none';nxt.style.transform='translateY(110%)';
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    const tr='transform .34s cubic-bezier(.4,0,.2,1)';
+    nxt.style.transition=tr;prv.style.transition=tr;
+    nxt.style.transform='translateY(0)';prv.style.transform='translateY(-110%)';
+    s.top=s.top==='a'?'b':'a';
+  }));
+}
+function updateClock(){
+  const n=new Date();
+  const hh=String(n.getHours()).padStart(2,'0');
+  const mm=String(n.getMinutes()).padStart(2,'0');
+  const ss=String(n.getSeconds()).padStart(2,'0');
+  setDigit('dt0',hh[0]);setDigit('dt1',hh[1]);
+  setDigit('dt2',mm[0]);setDigit('dt3',mm[1]);
+  setDigit('dt4',ss[0]);setDigit('dt5',ss[1]);
+  cdEl.textContent=n.toLocaleDateString('zh-TW',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+}
 updateClock();setInterval(updateClock,1000);
 
 /* === 碼錶 === */
